@@ -1,0 +1,263 @@
+generator client {
+  provider = "prisma-client"
+  output   = "./generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// IAM & Auth Domain
+// ============================================
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  phone        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  agencyId String? // For B2B agency users
+  agency   Agency? @relation(fields: [agencyId], references: [id])
+
+  sessions Session[]
+  bookings Booking[] // As a customer
+
+  @@map("users")
+}
+
+model Role {
+  id          String       @id @default(uuid())
+  name        String       @unique // CUSTOMER, ADMIN, AGENCY_MANAGER, DRIVER
+  description String?
+  permissions Permission[]
+  users       User[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id     String @id @default(uuid())
+  action String @unique // e.g., 'read:vehicles', 'create:bookings'
+  roles  Role[] // Prisma handles the linking table
+
+  @@map("permissions")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  refreshToken String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ============================================
+// Operations / B2B Domain
+// ============================================
+model Agency {
+  id        String   @id @default(uuid())
+  name      String
+  taxId     String?
+  email     String
+  phone     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users    User[] // Agency employees
+  branches Branch[] // Physical locations
+  vehicles Vehicle[] // Fleet owned by agency
+
+  @@map("agencies")
+}
+
+model Branch {
+  id       String @id @default(uuid())
+  agencyId String
+  name     String
+  address  String
+  cityId   String
+
+  agency   Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  city     City      @relation(fields: [cityId], references: [id])
+  vehicles Vehicle[] // Vehicles currently stationed at this branch
+
+  @@map("branches")
+}
+
+// ============================================
+// Catalog / Fleet Domain
+// ============================================
+model Vehicle {
+  id          String   @id @default(uuid())
+  agencyId    String
+  branchId    String
+  makeId      String
+  modelId     String
+  categoryId  String
+  year        Int
+  plateNumber String   @unique
+  vin         String?  @unique
+  color       String?
+  status      String   @default("AVAILABLE") // AVAILABLE, RENTED, MAINTENANCE
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  agency   Agency          @relation(fields: [agencyId], references: [id])
+  branch   Branch          @relation(fields: [branchId], references: [id])
+  make     VehicleMake     @relation(fields: [makeId], references: [id])
+  model    VehicleModel    @relation(fields: [modelId], references: [id])
+  category VehicleCategory @relation(fields: [categoryId], references: [id])
+
+  features Feature[] // M-to-M features (GPS, AC)
+  rates    DailyRate[]
+  bookings Booking[]
+
+  @@map("vehicles")
+}
+
+model VehicleMake {
+  id       String         @id @default(uuid())
+  name     String         @unique
+  models   VehicleModel[]
+  vehicles Vehicle[]
+
+  @@map("vehicle_makes")
+}
+
+model VehicleModel {
+  id       String      @id @default(uuid())
+  name     String
+  makeId   String
+  make     VehicleMake @relation(fields: [makeId], references: [id])
+  vehicles Vehicle[]
+
+  @@map("vehicle_models")
+}
+
+model VehicleCategory {
+  id       String    @id @default(uuid())
+  name     String    @unique // SUV, Economy, Luxury
+  vehicles Vehicle[]
+
+  @@map("vehicle_categories")
+}
+
+model Feature {
+  id       String    @id @default(uuid())
+  name     String    @unique // e.g., "Air Conditioning", "Bluetooth"
+  vehicles Vehicle[]
+
+  @@map("features")
+}
+
+model DailyRate {
+  id        String    @id @default(uuid())
+  vehicleId String
+  price     Decimal   @db.Decimal(10, 2)
+  startDate DateTime?
+  endDate   DateTime?
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@map("daily_rates")
+}
+
+// ============================================
+// Rentals & Booking Domain
+// ============================================
+model Booking {
+  id         String   @id @default(uuid())
+  customerId String
+  vehicleId  String
+  pickupDate DateTime
+  returnDate DateTime
+  basePrice  Decimal  @db.Decimal(10, 2)
+  totalPrice Decimal  @db.Decimal(10, 2)
+  status     String   @default("PENDING") // PENDING, CONFIRMED, CANCELLED, COMPLETED
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer User    @relation(fields: [customerId], references: [id])
+  vehicle  Vehicle @relation(fields: [vehicleId], references: [id])
+
+  addons       BookingAddon[]
+  transactions Transaction[]
+
+  @@map("bookings")
+}
+
+model Addon {
+  id          String  @id @default(uuid())
+  name        String // e.g., "Child Seat", "Extra Driver"
+  description String?
+  price       Decimal @db.Decimal(10, 2)
+
+  bookings BookingAddon[]
+
+  @@map("addons")
+}
+
+model BookingAddon {
+  id        String @id @default(uuid())
+  bookingId String
+  addonId   String
+  quantity  Int    @default(1)
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  addon   Addon   @relation(fields: [addonId], references: [id])
+
+  @@unique([bookingId, addonId])
+  @@map("booking_addons")
+}
+
+// ============================================
+// Finance & Billing Domain
+// ============================================
+model Transaction {
+  id          String   @id @default(uuid())
+  bookingId   String?
+  amount      Decimal  @db.Decimal(10, 2)
+  type        String // PAYMENT, REFUND, PAYOUT
+  status      String // PENDING, SUCCESS, FAILED
+  providerRef String? // Stripe/PayPal transaction ID
+  createdAt   DateTime @default(now())
+
+  booking Booking? @relation(fields: [bookingId], references: [id])
+
+  @@map("transactions")
+}
+
+// ============================================
+// Geography Domain
+// ============================================
+model Country {
+  id     String @id @default(uuid())
+  name   String @unique
+  code   String @unique @db.Char(2)
+  cities City[]
+
+  @@map("countries")
+}
+
+model City {
+  id        String   @id @default(uuid())
+  name      String
+  countryId String
+  country   Country  @relation(fields: [countryId], references: [id])
+  branches  Branch[]
+
+  @@map("cities")
+}
