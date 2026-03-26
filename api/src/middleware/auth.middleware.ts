@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { envConfig } from "../config/envConfig.js";
 import { Unauthorized } from "../lib/AppError.js";
 import * as STATUS_CODES from "../lib/HttpStatusCodes.js";
+import prisma from "../config/db.js";
 
 interface JwtPayload {
   sub: string;
@@ -37,4 +38,38 @@ export const authenticate = (
   } catch {
     next(Unauthorized("Token is invalid or expired"));
   }
+};
+
+export const requirePermission = (requiredPermission: string) => {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) {
+        return next(Unauthorized("User not authenticated"));
+      }
+
+      const role = await prisma.role.findUnique({
+        where: { id: req.user.roleId },
+        include: { permissions: true },
+      });
+
+      if (!role) {
+        return next(Unauthorized("User role not found"));
+      }
+
+      const hasPermission = role.permissions.some(
+        (p) => p.action === requiredPermission || p.action === "*"
+      );
+
+      if (!hasPermission) {
+        const error: any = new Error("Forbidden: Insufficient permissions");
+        error.statusCode = STATUS_CODES.default.FORBIDDEN;
+        error.isOperational = true;
+        return next(error);
+      }
+
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
 };

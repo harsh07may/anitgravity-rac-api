@@ -64,3 +64,57 @@ export async function getMe(req: Request, res: Response, next: NextFunction) {
     next(err);
   }
 }
+
+export async function getRoles(_req: Request, res: Response, next: NextFunction) {
+  try {
+    const roles = await iamService.getRoles();
+    sendSuccess(res, roles);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function createRole(req: Request, res: Response, next: NextFunction) {
+  try {
+    const role = await iamService.createRole(req.body);
+    sendCreated(res, role);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateRole(req: Request, res: Response, next: NextFunction) {
+  try {
+    const role = await iamService.updateRole(req.params.id as string, req.body);
+    sendSuccess(res, role);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getPermissions(_req: Request, res: Response, next: NextFunction) {
+  try {
+    const permissions = await iamService.getPermissions();
+    sendSuccess(res, permissions);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getUsers(_req: Request, res: Response, next: NextFunction) {
+  try {
+    const users = await iamService.getUsers();
+    sendSuccess(res, users);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateUserRole(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = await iamService.updateUserRole(req.params.id as string, req.body);
+    sendSuccess(res, user);
+  } catch (err) {
+    next(err);
+  }
+}

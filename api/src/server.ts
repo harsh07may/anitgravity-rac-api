@@ -1,10 +1,15 @@
+import "./config/envConfig.js"; // Must be first — validates env vars on startup
+
 import cors from "cors";
 import express, { type Express, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { pinoHttp } from "pino-http";
-import "./config/envConfig.js"; // Must be first — validates env vars on startup
+import swaggerUi from "swagger-ui-express";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import { envConfig } from "./config/envConfig.js";
 import { logger } from "./config/logger.js";
@@ -18,7 +23,6 @@ import iamRoutes from "./modules/iam/iam.routes.js";
 import rentalsRoutes from "./modules/rentals/rentals.routes.js";
 
 const app: Express = express();
-
 
 // Security & Core Middleware
 app.use(helmet());
@@ -66,6 +70,20 @@ app.get("/api/v1/health", (_req: Request, res: Response) => {
 app.use("/api/v1/iam", iamRoutes);
 app.use("/api/v1/fleet", fleetRoutes);
 app.use("/api/v1/rentals", rentalsRoutes);
+
+// Swagger API Documentation
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const swaggerPath = path.resolve(__dirname, "./swagger.json");
+
+if (envConfig.NODE_ENV === "development" && fs.existsSync(swaggerPath)) {
+  const swaggerDocument = JSON.parse(fs.readFileSync(swaggerPath, "utf8"));
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+} else {
+  app.use("/api-docs", (req, res) => {
+    res.send("Swagger file not found. Run 'npm run docs:generate' first.");
+  });
+}
 
 //  Global Error Handler (must be last)
 app.use(errorMiddleware);
